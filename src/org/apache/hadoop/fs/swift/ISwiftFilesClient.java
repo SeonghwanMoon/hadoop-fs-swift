@@ -21,6 +21,10 @@ public interface ISwiftFilesClient {
 	boolean deleteContainer(String container);
 
 	boolean deleteObject(String container, String object);
+	
+	boolean updateObjectMetadata(String container, String object, Map<String,String> metadata);
+	
+	boolean updateContainerMetadata(String container, Map<String,String> metadata);
 
 	FilesObjectMetaData getObjectMetaData(String container, String objName);
 	
