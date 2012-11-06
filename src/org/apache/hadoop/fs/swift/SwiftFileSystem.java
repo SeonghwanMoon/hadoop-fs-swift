@@ -573,6 +573,30 @@ public class SwiftFileSystem extends FileSystem {
 		}
 	}
 	
+	@Override
+	public void setPermission(Path p, FsPermission permission
+		      ) throws IOException {
+		SwiftPath absolutePath = makeAbsolute(p);
+		
+		String objName = absolutePath.getObject();
+		String container = absolutePath.getContainer();
+		try {
+			if(objName == null) {
+				FilesContainerMetaData metadata = client.getContainerMetaData(container);
+				Map<String,String> rawMetadata = metadata.getMetaData();
+				rawMetadata.put("Permissions", "" + permission.toShort());
+				client.updateContainerMetadata(container, rawMetadata);
+			} else {
+				FilesObjectMetaData metadata = client.getObjectMetaData(container, objName);
+				Map<String,String> rawMetadata = metadata.getMetaData();
+				rawMetadata.put("Permissions", "" + permission.toShort());
+				client.updateObjectMetadata(container, objName, rawMetadata);
+			}
+		} catch(Exception e) {
+			e.printStackTrace();
+		}
+	}
+	
 	private HashMap<String, String> makeMetaData(String user, String group, String permissions) {
 		HashMap<String,String> metaData = new HashMap<String,String>();
 		
@@ -619,12 +643,19 @@ public class SwiftFileSystem extends FileSystem {
 		parsedDate.setTime(0);
 		long parsedLength = 0L;
 		String user = "swift";
-		String group = "container";
+		String group = "system";
 		String permissions = "" + FsPermission.getDefault().toShort();
 		
 		try {
 			if(meta != null) {
 				parsedDate.setTime(Long.parseLong(meta.getLastModified().substring(0, meta.getLastModified().indexOf(".")) + "000"));
+				Map<String,String> extraMeta = meta.getMetaData();
+				if(extraMeta.containsKey("User"))
+					user = extraMeta.get("User");
+				if(extraMeta.containsKey("Group"))
+					group = extraMeta.get("Group");
+				if(extraMeta.containsKey("Permissions"))
+					permissions = extraMeta.get("Permissions");
 			}
 			return new FileStatus(parsedLength, true, 0, MAX_SWIFT_FILE_SIZE, 
 					parsedDate.getTime(), 0, new FsPermission(new Short(permissions)), user, group, 
