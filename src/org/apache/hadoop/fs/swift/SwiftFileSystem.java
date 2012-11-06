@@ -597,6 +597,35 @@ public class SwiftFileSystem extends FileSystem {
 		}
 	}
 	
+	public void setOwner(Path p, String username, String groupname
+		      ) throws IOException {
+		SwiftPath absolutePath = makeAbsolute(p);
+		
+		String objName = absolutePath.getObject();
+		String container = absolutePath.getContainer();
+		try {
+			if(objName == null) {
+				FilesContainerMetaData metadata = client.getContainerMetaData(container);
+				Map<String,String> rawMetadata = metadata.getMetaData();
+				if(username != null)
+					rawMetadata.put("User", username);
+				if(groupname != null)
+					rawMetadata.put("Group", groupname);
+				client.updateContainerMetadata(container, rawMetadata);
+			} else {
+				FilesObjectMetaData metadata = client.getObjectMetaData(container, objName);
+				Map<String,String> rawMetadata = metadata.getMetaData();
+				if(username != null)
+					rawMetadata.put("User", username);
+				if(groupname != null)
+					rawMetadata.put("Group", groupname);
+				client.updateObjectMetadata(container, objName, rawMetadata);
+			}
+		} catch(Exception e) {
+			e.printStackTrace();
+		}
+	}
+	
 	private HashMap<String, String> makeMetaData(String user, String group, String permissions) {
 		HashMap<String,String> metaData = new HashMap<String,String>();
 		
