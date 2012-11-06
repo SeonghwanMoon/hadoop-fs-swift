@@ -72,6 +72,28 @@ public class FilesClientWrapper implements ISwiftFilesClient {
 		}
 		return false;
 	}
+	
+	@Override
+	public boolean updateObjectMetadata(String container, String object, Map<String,String> metadata) {
+		try {
+			client.updateObjectMetadata(container, object, metadata);
+			return true;
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+		return false;
+	}
+	
+	@Override
+	public boolean updateContainerMetadata(String container, Map<String,String> metadata) {
+		try {
+			client.updateContainerMetadata(container, metadata);
+			return true;
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+		return false;
+	}
 
 	@Override
 	public FilesObjectMetaData getObjectMetaData(String container,
@@ -86,6 +108,7 @@ public class FilesClientWrapper implements ISwiftFilesClient {
 		return null;
 	}
 	
+	@Override
 	public FilesContainerMetaData getContainerMetaData(String container) {
 		try {
 			return client.getContainerMetaData(container);
