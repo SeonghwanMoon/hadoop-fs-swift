@@ -80,6 +80,7 @@ public class SwiftFileSystem extends FileSystem {
 			this.in = in;
 			this.objName = objName;
 			this.container = container;
+			System.out.println("create inputstream: " + container + "/" + objName); //debug
 		}
 
 		public void close() throws IOException {
@@ -93,6 +94,7 @@ public class SwiftFileSystem extends FileSystem {
 
 		@Override
 		public int read() throws IOException {
+			System.out.println("reading from inputstream"); //debug
 			int result = in.read();
 			if (result != -1) {
 				pos++;
@@ -102,6 +104,7 @@ public class SwiftFileSystem extends FileSystem {
 
 		public synchronized int read(byte[] b, int off, int len)
 				throws IOException {
+			System.out.println("reading from inputstream"); //debug
 			int result = in.read(b, off, len);
 			if (result > 0) {
 				pos += result;
@@ -111,6 +114,7 @@ public class SwiftFileSystem extends FileSystem {
 
 		@Override
 		public void seek(long pos) throws IOException {
+			System.out.println("seeking to " + pos + "in " + container + "/" + objName); //debug
 			try {
 				in.close();
 				in = client.getObjectAsStream(container, objName, pos);
@@ -147,7 +151,8 @@ public class SwiftFileSystem extends FileSystem {
 			this.objName = objName;
 			this.bufferSize = bufferSize;
 			this.metaData = metaData;
-
+			
+			System.out.println("create outputstream: " + container + "/" + objName + " with buffer: " + bufferSize); //debug
 			startOutputThread();
 		}
 
@@ -185,6 +190,7 @@ public class SwiftFileSystem extends FileSystem {
 		@Override
 		public synchronized void close() {
 			try {
+				System.out.println("closing outputstream"); //debug
 				toPipe.flush();
 				toPipe.close();
 				thread.join();
@@ -484,14 +490,19 @@ public class SwiftFileSystem extends FileSystem {
 
 		try {
 			if (objectMeta != null) {
-				if (FOLDER_MIME_TYPE.equals(objectMeta.getMimeType()))
+				if (FOLDER_MIME_TYPE.equals(objectMeta.getMimeType())) {
+					System.out.println("opened folder: " + absolutePath); //debug
 					return newDirectory(objectMeta, absolutePath);
+				}
+				System.out.println("opened file: " + absolutePath); //debug
 				return newFile(objectMeta, absolutePath);
 			} else if(containerMeta != null && objName == null) {
+				System.out.println("opened container: " + absolutePath); //debug
 				return newContainer(containerMeta, absolutePath);
 			} else {
 				List<FilesObject> objList = client.listObjectsStartingWith(container, objName, 1, new Character('/'));
 				if (objList != null && objList.size() > 0) {
+					System.out.println("opened unknown: " + absolutePath); //debug
 					return newDirectory(new FilesObjectMetaData("application/directory","0","0","Thu, 01 Jan 1970 00:00:00 GMT"), absolutePath);
 				}
 			}
