@@ -246,6 +246,16 @@ public class SwiftFileSystem extends FileSystem {
 	private static long[] LARGE_OBJECT_SUFFIX_BUCKET;
 
 	private static final String FOLDER_MIME_TYPE = "application/directory";
+	
+	private static final String SWIFT_USER = "swift";
+	
+	private static final String SWIFT_GROUP = "system";
+	
+	private static final String HADOOP_GROUP = "hadoop";
+	
+	private static final String DEFAULT_DIR_PERM = "700";
+	
+	private static final String DEFAULT_FILE_PERM = "644";
 
 	protected static final SimpleDateFormat rfc822DateParser = new SimpleDateFormat(
 			"EEE, dd MMM yyyy HH:mm:ss z", Locale.US);
@@ -404,8 +414,8 @@ public class SwiftFileSystem extends FileSystem {
 			throw new IOException("create: "+ absolutePath +": Is a directory");
 		}
 		
-		HashMap<String, String> metaData = makeMetaData(System.getProperty("user.name"), "supergroup", "" + permission.toShort(), Short.toString(replication), Long.toString(blockSize));
-		System.out.println("create: " + absolutePath);
+		HashMap<String, String> metaData = makeMetadata(System.getProperty("user.name"), HADOOP_GROUP, "" + permission.toShort(), Short.toString(replication), Long.toString(blockSize));
+		System.out.println("create: " + absolutePath); //debug
 		return new FSDataOutputStream(
 				new SwiftFsOutputStream(client, absolutePath.getContainer(), 
 						absolutePath.getObject(), bufferSize, progress, metaData), 
@@ -564,7 +574,9 @@ public class SwiftFileSystem extends FileSystem {
 	public boolean mkdirs(Path f, FsPermission permission) throws IOException {
 		SwiftPath absolutePath = makeAbsolute(f);
 		
-		HashMap<String,String> metaData = makeMetaData(System.getProperty("user.name"), "supergroup", "" + permission.toShort(), "0", this.getConf().get("fs.swift.blockSize"));
+		System.out.println("making directory: " + absolutePath); //debug
+		
+		HashMap<String,String> metaData = makeMetadata(System.getProperty("user.name"), HADOOP_GROUP, "" + permission.toShort(), "0", "" + getBytes(Long.parseLong(this.getConf().get("fs.swift.blockSize"))));
 		if (absolutePath.isContainer()) {
 			return client.createContainer(absolutePath.getContainer(), metaData);
 		} else {
@@ -578,6 +590,7 @@ public class SwiftFileSystem extends FileSystem {
 		      ) throws IOException {
 		SwiftPath absolutePath = makeAbsolute(p);
 		
+		Configuration conf = this.getConf();
 		String objName = absolutePath.getObject();
 		String container = absolutePath.getContainer();
 		try {
@@ -587,8 +600,7 @@ public class SwiftFileSystem extends FileSystem {
 				if(metadata != null) {
 					rawMetadata = metadata.getMetaData();
 				} else {
-					rawMetadata.put("User", System.getProperty("user.name"));
-					rawMetadata.put("Group", "supergroup");
+					rawMetadata = makeMetadata(SWIFT_USER, SWIFT_GROUP, DEFAULT_DIR_PERM, "0", "" + getBytes(Long.parseLong(conf.get("fs.swift.blockSize"))));
 				}
 				rawMetadata.put("Permissions", "" + permission.toShort());
 				client.updateContainerMetadata(container, rawMetadata);
@@ -598,47 +610,102 @@ public class SwiftFileSystem extends FileSystem {
 				if(metadata != null) {
 					rawMetadata = metadata.getMetaData();
 				} else {
-					rawMetadata.put("User", System.getProperty("user.name"));
-					rawMetadata.put("Group", "supergroup");
+					rawMetadata = makeMetadata(SWIFT_USER, SWIFT_GROUP, DEFAULT_FILE_PERM, conf.get("fs.swift.replication"), "" + getBytes(Long.parseLong(conf.get("fs.swift.blockSize"))));
 				}
 				rawMetadata.put("Permissions", "" + permission.toShort());
 				client.updateObjectMetadata(container, objName, rawMetadata);
 			}
+			
+			System.out.println("setting permissions: " + absolutePath);
 		} catch(Exception e) {
 			e.printStackTrace();
 		}
 	}
 	
+	@Override
 	public void setOwner(Path p, String username, String groupname
 		      ) throws IOException {
 		SwiftPath absolutePath = makeAbsolute(p);
+		
+		Configuration conf = this.getConf();
+		String objName = absolutePath.getObject();
+		String container = absolutePath.getContainer();
+		try {
+			if(objName == null) {
+				FilesContainerMetaData metadata = client.getContainerMetaData(container);
+				Map<String,String> rawMetadata;
+				if(metadata != null) {
+					rawMetadata = metadata.getMetaData();
+				} else {
+					rawMetadata = makeMetadata(SWIFT_USER, SWIFT_GROUP, DEFAULT_DIR_PERM, "0", "" + getBytes(Long.parseLong(conf.get("fs.swift.blockSize"))));
+				}
+				if(username != null)
+					rawMetadata.put("User", username);
+				if(groupname != null)
+					rawMetadata.put("Group", groupname);
+				client.updateContainerMetadata(container, rawMetadata);
+			} else {
+				FilesObjectMetaData metadata = client.getObjectMetaData(container, objName);
+				Map<String,String> rawMetadata; 
+				if(metadata != null) {
+					rawMetadata = metadata.getMetaData();
+				} else {
+					rawMetadata = makeMetadata(SWIFT_USER, SWIFT_GROUP, DEFAULT_FILE_PERM, conf.get("fs.swift.replication"), "" + getBytes(Long.parseLong(conf.get("fs.swift.blockSize"))));
+				}
+				if(username != null)
+					rawMetadata.put("User", username);
+				if(groupname != null)
+					rawMetadata.put("Group", groupname);
+				client.updateObjectMetadata(container, objName, rawMetadata);
+			}
+			
+			System.out.println("setting owner: " + absolutePath); //debug;
+		} catch(Exception e) {
+			e.printStackTrace();
+		}
+	}
+	
+	@Override
+	public boolean setReplication(Path src, short replication
+			) throws IOException {
+		Configuration conf = this.getConf();
+		SwiftPath absolutePath = makeAbsolute(src);
 		
 		String objName = absolutePath.getObject();
 		String container = absolutePath.getContainer();
 		try {
 			if(objName == null) {
 				FilesContainerMetaData metadata = client.getContainerMetaData(container);
-				Map<String,String> rawMetadata = metadata.getMetaData();
-				if(username != null)
-					rawMetadata.put("User", username);
-				if(groupname != null)
-					rawMetadata.put("Group", groupname);
-				client.updateContainerMetadata(container, rawMetadata);
+				Map<String,String> rawMetadata = new HashMap<String,String>();
+				if(metadata != null) {
+					rawMetadata = metadata.getMetaData();
+				} else {
+					rawMetadata = makeMetadata(SWIFT_USER, SWIFT_GROUP, DEFAULT_DIR_PERM, "0", "" + getBytes(Long.parseLong(conf.get("fs.swift.blockSize"))));
+				}
+				rawMetadata.put("Replication", "" + replication);
+				if(client.updateContainerMetadata(container, rawMetadata))
+					return true;
 			} else {
 				FilesObjectMetaData metadata = client.getObjectMetaData(container, objName);
-				Map<String,String> rawMetadata = metadata.getMetaData();
-				if(username != null)
-					rawMetadata.put("User", username);
-				if(groupname != null)
-					rawMetadata.put("Group", groupname);
-				client.updateObjectMetadata(container, objName, rawMetadata);
+				Map<String,String> rawMetadata = new HashMap<String,String>();
+				if(metadata != null) {
+					rawMetadata = metadata.getMetaData();
+				} else {
+					rawMetadata = makeMetadata(SWIFT_USER, SWIFT_GROUP, DEFAULT_FILE_PERM, conf.get("fs.swift.replication"), "" + getBytes(Long.parseLong(conf.get("fs.swift.blockSize"))));
+				}
+				rawMetadata.put("Replication", "" + replication);
+				if(client.updateObjectMetadata(container, objName, rawMetadata)) 
+					return true;
 			}
+			
+			System.out.println("setting replication: " + absolutePath); //debug
 		} catch(Exception e) {
 			e.printStackTrace();
 		}
+		return false;
 	}
 	
-	private HashMap<String, String> makeMetaData(String user, String group, String permissions, String replication, String blockSize) {
+	private HashMap<String, String> makeMetadata(String user, String group, String permissions, String replication, String blockSize) {
 		HashMap<String,String> metaData = new HashMap<String,String>();
 		
 		metaData.put("User", user);
@@ -650,6 +717,10 @@ public class SwiftFileSystem extends FileSystem {
 		return metaData;
 		
 	}
+	
+	private Long getBytes(Long size) {
+		return size * 1024 * 1024;
+	}
 
 	private FileStatus newDirectory(FilesObjectMetaData meta, Path path) {
 
@@ -657,9 +728,9 @@ public class SwiftFileSystem extends FileSystem {
 		Date parsedDate = new Date();
 		parsedDate.setTime(0);
 		long parsedLength = 0L;
-		String user = "swift";
-		String group = "system";
-		String permissions = "" + FsPermission.getDefault().toShort();
+		String user = SWIFT_USER;
+		String group = SWIFT_GROUP;
+		String permissions = DEFAULT_DIR_PERM;
 		long blockSize = Long.parseLong(conf.get("fs.swift.blockSize"));
 		
 		try {
@@ -675,7 +746,7 @@ public class SwiftFileSystem extends FileSystem {
 				if(extraMeta.containsKey("Blocksize"))
 					blockSize = Long.parseLong(extraMeta.get("Blocksize"));
 			} 
-			return new FileStatus(parsedLength, true, 0, blockSize, 
+			return new FileStatus(parsedLength, true, 0, getBytes(blockSize), 
 					parsedDate.getTime(), parsedDate.getTime(), new FsPermission(new Short(permissions)), user, group, 
 					path.makeQualified(this));
 		} catch (Exception e) {
@@ -690,9 +761,9 @@ public class SwiftFileSystem extends FileSystem {
 		Date parsedDate = new Date();
 		parsedDate.setTime(0);
 		long parsedLength = 0L;
-		String user = "swift";
-		String group = "system";
-		String permissions = "" + FsPermission.getDefault().toShort();
+		String user = SWIFT_USER;
+		String group = SWIFT_GROUP;
+		String permissions = DEFAULT_DIR_PERM;
 		long blockSize = Long.parseLong(conf.get("fs.swift.blockSize"));
 		
 		try {
@@ -708,7 +779,7 @@ public class SwiftFileSystem extends FileSystem {
 				if(extraMeta.containsKey("Blocksize"))
 					blockSize = Long.parseLong(extraMeta.get("Blocksize"));
 			}
-			return new FileStatus(parsedLength, true, 0, blockSize, 
+			return new FileStatus(parsedLength, true, 0, getBytes(blockSize), 
 					parsedDate.getTime(), parsedDate.getTime(), new FsPermission(new Short(permissions)), user, group, 
 					path.makeQualified(this));
 		} catch (Exception e) {
@@ -723,9 +794,9 @@ public class SwiftFileSystem extends FileSystem {
 		Date parsedDate = new Date();
 		parsedDate.setTime(0);
 		long parsedLength = 0L;
-		String user = "swift";
-		String group = "system";
-		String permissions = "" + FsPermission.getDefault().toShort();
+		String user = SWIFT_USER;
+		String group = SWIFT_GROUP;
+		String permissions = DEFAULT_FILE_PERM;
 		int replication = Integer.parseInt(conf.get("fs.swift.replication"));
 		long blockSize = Long.parseLong(conf.get("fs.swift.blockSize"));
 		
@@ -749,7 +820,7 @@ public class SwiftFileSystem extends FileSystem {
 				blockSize = parsedLength;
 			}
 			
-			return new FileStatus(parsedLength, false, replication, blockSize,
+			return new FileStatus(parsedLength, false, replication, getBytes(blockSize),
 					parsedDate.getTime(), parsedDate.getTime(), new FsPermission(new Short(permissions)), user, group,
 					path.makeQualified(this));
 		} catch (Exception e) {
@@ -767,6 +838,8 @@ public class SwiftFileSystem extends FileSystem {
 		if (stat.isDir()) {
 			throw new IOException("open: "+ f +": Is a directory");
 		}
+		
+		System.out.println("opening: " + f); //debug
 		
 		SwiftPath absolutePath = makeAbsolute(f);
 		String container = absolutePath.getContainer();
