@@ -114,7 +114,7 @@ public class SwiftFileSystem extends FileSystem {
 
 		@Override
 		public void seek(long pos) throws IOException {
-			System.out.println("seeking to " + pos + "in " + container + "/" + objName); //debug
+			System.out.println("seeking to " + pos + " (bytes) in " + container + "/" + objName); //debug
 			try {
 				in.close();
 				in = client.getObjectAsStream(container, objName, pos);
